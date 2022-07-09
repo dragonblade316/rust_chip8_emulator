@@ -66,7 +66,7 @@ impl Display {
                 else {
                     self.canvas.set_draw_color(Color::RGB(0, 0, 0));
                 }
-                self.canvas.fill_rect(Rect::new((i as i32 * 5) as i32, (j as i32 * 5) as i32, (/*(x * 5) + */5) as u32, (/*(x * 5) + */5) as u32));
+                self.canvas.fill_rect(Rect::new((j as i32 * 5) as i32, (i as i32 * 5) as i32, (/*(x * 5) + */5) as u32, (/*(x * 5) + */5) as u32));
             }
         }
 
@@ -132,7 +132,7 @@ impl Processor {
     
     pub fn load(&mut self, data: &[u8]) {
         for (i, &byte) in data.iter().enumerate() {
-            println!("{:X}",byte);
+            //println!("{:X}",byte);
             let addr = 0x200 + i;
             if addr < 4096 {
                 self.memory[0x200 + i] = byte;
@@ -389,7 +389,7 @@ impl Processor {
         let mut x = self.registers[(opcode & 0x0F00 >> 8) as usize];
         let mut y = self.registers[((opcode & 0x00F0) >> 4) as usize];
         let nibble = (opcode) & (0x000F);
-        let counter = self.index;
+        let mut counter = self.index;
 
         if (x > 64) {
             x = x-64;
@@ -404,25 +404,32 @@ impl Processor {
         //the y offset is "i" the only reason I have an x offset is bc I'm too lazy to come up with a different way to do it. (the offsetX is basically an index)
         for i in 0..nibble {
             
-            self.memory[counter as usize];
-            let byte = format!("{:b}", 0x6969);
+            
+
+            let byte = self.memory[(counter) as usize];
+            counter += 1 as u16;
+
+            println!("{}", byte);
 
             if i > 32 {
                 break
             }
             
 
-            for j in byte.chars() {
+            for j in 0..7 {
                 
                 if offsetX > 64 {
                     break
                 }
-                if j == '1' {
+                
+                if byte & (128 >> offsetX) > 0 {
                     //hopefully casting a u16 to a u8 does not cause some obscure problem that makes no sense
                     self.display.draw_pixel(offsetX + x, i as u8 + y);
                 }
+
                 offsetX += 1;
             }
+            offsetX = 0;
         }
         PcState::Next
     }
