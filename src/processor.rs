@@ -67,7 +67,7 @@ pub struct Processor {
 
     delay_timer: u8,
     sound_timer: u8,
-    opcode: u8,
+    opcode: u16,
     program_counter: u16,
 }
 
@@ -179,7 +179,7 @@ impl Processor {
         match instruction {
             PcState::Next => self.program_counter += 2,
             PcState::Skip => self.program_counter += 4,
-            PcState::Jump(to) => self.program_counter += (to) as u16,
+            PcState::Jump(to) => self.program_counter = (to) as u16
         }
         
     }
