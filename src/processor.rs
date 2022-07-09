@@ -1,11 +1,13 @@
 //the coding style will be a bit inconsistent as I'm learning parts of the syntax as I go. maybe one day I will go though here and fix anything rustfmt does not grab
 use crate::font::FONT_SET;
 extern crate sdl2;
+use sdl2::Sdl;
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use std::time::Duration;
 use sdl2::rect::Rect;
+use sdl2::EventPump;
 
 struct Keypad {
     waiting: bool,
@@ -14,8 +16,9 @@ struct Keypad {
 
 struct Display {
     vram: [[u8; 64]; 32],
-    window: sdl2::video::Window,
+    sdl_context: Sdl,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
+    event_pump: EventPump,
 }
 
 impl Display {
@@ -34,18 +37,51 @@ impl Display {
         
         Display {
             vram: [[0; 64]; 32],
-            window: video_subsystem.window("chip-8 emulator", 320, 160).position_centered().build().expect("could not initialize video subsystem"),
             canvas: canvas,
+            event_pump: sdl_context.event_pump().unwrap(),
+            sdl_context: sdl_context,
         }
 
         
     }
 
     pub fn clear(&mut self){
-        self.canvas.clear();
+        self.vram = [[0; 64]; 32];
     }
     pub fn draw_pixel(&mut self, x: u8, y: u8){
-        self.canvas.fill_rect(Rect::new((x * 5) as i32, (y * 5) as i32, ((x * 5) + 5) as u32, ((x * 5) + 5) as u32));
+        if self.vram[y as usize][x as usize] == 1{
+            self.vram[y as usize][x as usize] = 0;
+        }
+        else{
+            self.vram[y as usize][x as usize] = 1
+        }
+    }
+
+    fn update(&mut self) {
+        for i in 0..self.vram.len() {
+            for j in 0..self.vram[i].len() {
+                if self.vram[i][j] == 1 {
+                    self.canvas.set_draw_color(Color::RGB(255, 255, 0));
+                }
+                else {
+                    self.canvas.set_draw_color(Color::RGB(0, 0, 0));
+                }
+                self.canvas.fill_rect(Rect::new((i as i32 * 5) as i32, (j as i32 * 5) as i32, (/*(x * 5) + */5) as u32, (/*(x * 5) + */5) as u32));
+            }
+        }
+
+        for event in self.event_pump.poll_iter() {
+            match event {
+                Event::Quit {..} |
+                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                    panic!("game ended by escape code");
+                },
+                _ => {}
+            }
+        }
+
+
+        self.canvas.present();
     }
 }
 //program counter state
@@ -130,6 +166,7 @@ impl Processor {
             let opcode = ((self.memory[(self.program_counter) as usize] as u16) << 8 | (self.memory[(self.program_counter + 1) as usize]) as u16) as u16; 
             self.run_opcode(opcode);
         //}
+        self.display.update();
     }
 
     fn run_opcode(&mut self, opcode: u16) {
@@ -240,7 +277,10 @@ impl Processor {
     }
     // 7XNN - Adds NN to VX. 7000
     fn op_7xnn(&mut self, opcode: &u16) -> PcState {
-        self.registers[((opcode & 0x0F00) >> 8) as usize] += ((opcode) & (0x00FF)) as u8;
+        let vx = self.registers[((opcode & 0x0F00) >> 8) as usize] as u16;
+        let nn = ((opcode) & (0x00FF)) as u16;
+        let solution = vx + nn;
+        self.registers[((opcode & 0x0F00) >> 8) as usize] = solution as u8;
         PcState::Next
     }
     // 8XY_. 8000. functionless even though it is in the opcode reader
@@ -351,10 +391,10 @@ impl Processor {
         let nibble = (opcode) & (0x000F);
         let counter = self.index;
 
-        if (x < 64) {
+        if (x > 64) {
             x = x-64;
         }
-        if (y < 32) {
+        if (y > 32) {
             y = y-32;
         }
 

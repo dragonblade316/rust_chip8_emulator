@@ -17,6 +17,8 @@ fn get_file_as_byte_vec(filename: &String) -> Vec<u8> {
     buffer
 }
 
+
+
 fn main() {
     println!("start");
     let mut processor = Processor::new();
