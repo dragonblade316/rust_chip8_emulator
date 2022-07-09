@@ -22,7 +22,7 @@ fn main() {
     let mut processor = Processor::new();
     println!("created");
     let args: Vec<_> = env::args().collect();
-    let instructions = get_file_as_byte_vec(&args[0]);
+    let instructions = get_file_as_byte_vec(&args[1]);
     processor.load(&instructions);
     while (true) {
         processor.tick();
