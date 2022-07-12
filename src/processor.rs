@@ -8,22 +8,99 @@ use sdl2::keyboard::Keycode;
 use std::time::Duration;
 use sdl2::rect::Rect;
 use sdl2::EventPump;
-
-struct Keypad {
-    waiting: bool,
-    keys: [bool; 16],
+use sdl2::keyboard::Scancode;
+/*
+struct IO<'a> {
+    sdl_context: Sdl,
+    event_pump: EventPump,
+    display: Display<'a>,
+    keypad: Keypad<'a>,
 }
 
-struct Display {
+impl IO<'_> {
+    pub fn new() -> Self {
+
+        let sdl_context = sdl2::init().unwrap();
+        let event_p = sdl_context.event_pump().unwrap();
+        IO {
+            sdl_context: sdl_context,
+            event_pump: event_p, 
+            display: Display::new(sdl_context ,&event_p),
+            keypad: Keypad::new(sdl_context, &event_p),
+        }
+    }
+
+    pub fn update(&self) {
+        self.display.update();
+        self.keypad.update();
+
+        for event in self.event_pump.poll_iter() {
+            match event {
+                Event::Quit {..} |
+                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                    panic!("game ended by escape code");
+                },
+                _ => {}
+            }
+        }
+    }
+}
+
+struct Keypad<'keypad> {
+    waiting: bool,
+    keypad: bool,
+    keys: [bool; 16],
+    event_pump: &'keypad EventPump,
+}
+
+impl<'keypad> Keypad<'keypad> {
+    pub fn new(sdl_context: Sdl, event_pump: &'keypad EventPump) -> Self {
+        //might get rid of waiting
+        Keypad {
+            waiting: false,
+            keypad: true,
+            keys: [false; 16],
+            event_pump: event_pump
+        }
+    }
+
+    pub fn update(&mut self) {
+        let board = self.event_pump.keyboard_state();
+
+        //I did not see a way to iterate over this so time to disregard whoever said dont repeat yourself
+        self.keys[0] = board.is_scancode_pressed(Scancode::Kp1);
+        self.keys[1] = board.is_scancode_pressed(Scancode::Kp2);
+        self.keys[2] = board.is_scancode_pressed(Scancode::Kp3);
+        self.keys[3] = board.is_scancode_pressed(Scancode::Kp4);
+        
+        self.keys[4] = board.is_scancode_pressed(Scancode::Q);
+        self.keys[5] = board.is_scancode_pressed(Scancode::W);
+        self.keys[6] = board.is_scancode_pressed(Scancode::E);
+        self.keys[7] = board.is_scancode_pressed(Scancode::R);
+        
+        self.keys[8] = board.is_scancode_pressed(Scancode::A);
+        self.keys[9] = board.is_scancode_pressed(Scancode::S);
+        self.keys[10] = board.is_scancode_pressed(Scancode::D);
+        self.keys[11] = board.is_scancode_pressed(Scancode::F);
+
+        self.keys[12] = board.is_scancode_pressed(Scancode::Z);
+        self.keys[13] = board.is_scancode_pressed(Scancode::X);
+        self.keys[14] = board.is_scancode_pressed(Scancode::C);
+        self.keys[15] = board.is_scancode_pressed(Scancode::V);
+    }
+}
+
+
+struct Display<'display> {
     vram: [[u8; 64]; 32],
     sdl_context: Sdl,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
-    event_pump: EventPump,
+    event_pump: &'display EventPump,
 }
 
-impl Display {
-    pub fn new() -> Self {
-        let sdl_context = sdl2::init().unwrap();
+impl<'display> Display<'display> {
+    pub fn new(sdl_context: Sdl, event_pump: &'display sdl2::EventPump) -> Self {
+        
         let video_subsystem = sdl_context.video().unwrap();
 
         let window = video_subsystem.window("chip-8 emulator", 320, 160)
@@ -38,12 +115,14 @@ impl Display {
         Display {
             vram: [[0; 64]; 32],
             canvas: canvas,
-            event_pump: sdl_context.event_pump().unwrap(),
+            event_pump: event_pump,
             sdl_context: sdl_context,
         }
-
-        
     }
+
+
+
+
 
     pub fn clear(&mut self){
         self.vram = [[0; 64]; 32];
@@ -69,6 +148,48 @@ impl Display {
                 self.canvas.fill_rect(Rect::new((j as i32 * 5) as i32, (i as i32 * 5) as i32, (/*(x * 5) + */5) as u32, (/*(x * 5) + */5) as u32));
             }
         }
+        self.canvas.present();
+    }
+}*/
+
+
+struct IO {
+    sdl_context: Sdl,
+    event_pump: EventPump,
+    vram: [[u8; 64]; 32],
+    canvas: sdl2::render::Canvas<sdl2::video::Window>,
+    keys: [bool; 16],
+}
+impl IO {
+    pub fn new() -> Self {
+        let sdl_context = sdl2::init().unwrap();
+        let event_pump = sdl_context.event_pump().unwrap();
+
+        
+        let video_subsystem = sdl_context.video().unwrap();
+
+        let window = video_subsystem.window("chip-8 emulator", 320, 160)
+            .position_centered()
+            .build()
+            .expect("could not initialize video subsystem");
+
+        let mut canvas = window.into_canvas().build()
+            .expect("could not make a canvas");
+        canvas.set_draw_color(Color::RGB(0, 0, 0));
+        
+
+        IO {
+            sdl_context: sdl_context,
+            event_pump: event_pump,
+            canvas: canvas,
+            vram: [[0; 64]; 32],
+            keys: [false; 16],
+        }
+    }
+
+    pub fn update(&mut self) {
+        self.update_display();
+        self.update_keypad();
 
         for event in self.event_pump.poll_iter() {
             match event {
@@ -79,11 +200,65 @@ impl Display {
                 _ => {}
             }
         }
+    }
 
 
+    
+    pub fn clear_display(&mut self){
+        self.vram = [[0; 64]; 32];
+    }
+    pub fn draw_pixel(&mut self, x: u8, y: u8){
+        if self.vram[y as usize][x as usize] == 1{
+            self.vram[y as usize][x as usize] = 0;
+        }
+        else{
+            self.vram[y as usize][x as usize] = 1
+        }
+    }
+
+    fn update_display(&mut self) {
+        for i in 0..self.vram.len() {
+            for j in 0..self.vram[i].len() {
+                if self.vram[i][j] == 1 {
+                    self.canvas.set_draw_color(Color::RGB(255, 255, 0));
+                }
+                else {
+                    self.canvas.set_draw_color(Color::RGB(0, 0, 0));
+                }
+                self.canvas.fill_rect(Rect::new((j as i32 * 5) as i32, (i as i32 * 5) as i32, (/*(x * 5) + */5) as u32, (/*(x * 5) + */5) as u32));
+            }
+        }
         self.canvas.present();
     }
+    
+    fn update_keypad(&mut self) {
+        let board = self.event_pump.keyboard_state();
+
+        //I did not see a way to iterate over this so time to disregard whoever said dont repeat yourself
+        self.keys[0] = board.is_scancode_pressed(Scancode::Kp1);
+        self.keys[1] = board.is_scancode_pressed(Scancode::Kp2);
+        self.keys[2] = board.is_scancode_pressed(Scancode::Kp3);
+        self.keys[3] = board.is_scancode_pressed(Scancode::Kp4);
+        
+        self.keys[4] = board.is_scancode_pressed(Scancode::Q);
+        self.keys[5] = board.is_scancode_pressed(Scancode::W);
+        self.keys[6] = board.is_scancode_pressed(Scancode::E);
+        self.keys[7] = board.is_scancode_pressed(Scancode::R);
+        
+        self.keys[8] = board.is_scancode_pressed(Scancode::A);
+        self.keys[9] = board.is_scancode_pressed(Scancode::S);
+        self.keys[10] = board.is_scancode_pressed(Scancode::D);
+        self.keys[11] = board.is_scancode_pressed(Scancode::F);
+
+        self.keys[12] = board.is_scancode_pressed(Scancode::Z);
+        self.keys[13] = board.is_scancode_pressed(Scancode::X);
+        self.keys[14] = board.is_scancode_pressed(Scancode::C);
+        self.keys[15] = board.is_scancode_pressed(Scancode::V);
+    }
+
+
 }
+
 //program counter state
 enum PcState {
     Next,
@@ -97,10 +272,7 @@ pub struct Processor {
     index: u16,
     stack: [u16; 16],
     stack_pointer: u8,
-
-    display: Display,
-    //keypad: Keypad,
-
+    io: IO,
     delay_timer: u8,
     sound_timer: u8,
     opcode: u16,
@@ -123,8 +295,7 @@ impl Processor {
             stack_pointer: 0,
             delay_timer: 0,
             sound_timer: 0,
-            display: Display::new(),
-            //keypad: Keypad{},
+            io: IO::new(),
             program_counter: 0x200,
             opcode: 0,
         }
@@ -142,31 +313,19 @@ impl Processor {
         }
     }
 
-    pub fn tick(&mut self,/* keypad: [bool; 16]*/) {
-        /*self.keypad;
+    pub fn tick(&mut self) {        
 
-        
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1
+        }
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1
+        }
 
-        if self.keypad_waiting {
-            for i in 0..keypad.len() {
-                if keypad[i] {
-                    self.keypad_waiting = false;
-                    self.registers[self.keypad_register] = i as u8;
-                    break;
-                }
-            }
-        } else {*/
-            if self.delay_timer > 0 {
-                self.delay_timer -= 1
-            }
-            if self.sound_timer > 0 {
-                self.sound_timer -= 1
-            }
-
-            let opcode = ((self.memory[(self.program_counter) as usize] as u16) << 8 | (self.memory[(self.program_counter + 1) as usize]) as u16) as u16; 
-            self.run_opcode(opcode);
-        //}
-        self.display.update();
+        let opcode = ((self.memory[(self.program_counter) as usize] as u16) << 8 | (self.memory[(self.program_counter + 1) as usize]) as u16) as u16; 
+        self.run_opcode(opcode);
+    
+        self.io.update();
     }
 
     fn run_opcode(&mut self, opcode: u16) {
@@ -223,7 +382,7 @@ impl Processor {
     //0000 read by the reader but used to accses other instructions
     // 00E0 - Clear screen. 0000. 0000
     fn op_00e0(&mut self, opcode: &u16) -> PcState {
-        self.display.clear();
+        self.io.clear_display();
         PcState::Next
     }
     // 00EE - Return from subroutine. 0000. 000e
@@ -421,10 +580,10 @@ impl Processor {
                 if offsetX > 64 {
                     break
                 }
-                
+
                 if byte & (128 >> offsetX) > 0 {
                     //hopefully casting a u16 to a u8 does not cause some obscure problem that makes no sense
-                    self.display.draw_pixel(offsetX + x, i as u8 + y);
+                    self.io.draw_pixel(offsetX + x, i as u8 + y);
                 }
 
                 offsetX += 1;
