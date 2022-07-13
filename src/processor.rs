@@ -229,7 +229,7 @@ impl IO {
                     (i as i32 * 5) as i32,
                     (/*(x * 5) + */5) as u32,
                     (/*(x * 5) + */5) as u32,
-                ));
+                )).unwrap();
             }
         }
         self.canvas.present();
@@ -272,7 +272,7 @@ pub struct Processor {
     memory: [u8; 4096],
     registers: [u8; 16],
     index: u16,
-    stack: [u16; 16],
+    stack: [u16; 64],
     stack_pointer: u8,
     io: IO,
     delay_timer: u8,
@@ -293,7 +293,7 @@ impl Processor {
             memory: ram,
             registers: [0; 16],
             index: 0,
-            stack: [0; 16],
+            stack: [0; 64],
             stack_pointer: 0,
             delay_timer: 0,
             sound_timer: 0,
@@ -332,14 +332,13 @@ impl Processor {
     }
 
     fn run_opcode(&mut self, opcode: u16) {
-        //println!("{:X}", opcode);
+        println!("{:X}", opcode);
         let instruction = match opcode & 0xF000 {
             0x0000 => match opcode & 0x000f {
                 0x0000 => self.op_00e0(&opcode),
                 0x000e => self.op_00ee(&opcode),
                 _ => panic!("unknown instruction under 0x0000 {:X}", opcode),
             },
-            0x000e => self.op_00ee(&opcode),
             0x1000 => self.op_1nnn(&opcode),
             0x2000 => self.op_2nnn(&opcode),
             0x3000 => self.op_3xnn(&opcode),
@@ -401,7 +400,8 @@ impl Processor {
     // 00EE - Return from subroutine. 0000. 000e
     fn op_00ee(&mut self, opcode: &u16) -> PcState {
         self.stack_pointer -= 1;
-        PcState::Jump((self.stack[self.stack_pointer as usize] + 1) as usize)
+        println!("the stack pointer is: {}", self.stack_pointer);
+        PcState::Jump((self.stack[self.stack_pointer as usize] + 2) as usize)
     }
     // 1NNN - Jumps to address NNN. 1000
     fn op_1nnn(&mut self, opcode: &u16) -> PcState {
@@ -413,6 +413,9 @@ impl Processor {
         self.stack_pointer += 1;
         self.stack[(self.stack_pointer) as usize] = self.program_counter;
         let destination = opcode & 0x0FFF;
+
+        println!("the stark pointer is: {}", self.stack_pointer);
+
         PcState::Jump(destination as usize)
     }
     // 3XNN - Skips the next instruction if VX equals NN. 3000
@@ -433,8 +436,7 @@ impl Processor {
     }
     // 5XY0 - Skips the next instruction if VX equals VY. 5000
     fn op_5xy0(&mut self, opcode: &u16) -> PcState {
-        if (self.registers[(opcode & 0x0F00 >> 8) as usize]
-            == self.registers[((opcode & 0x00F0) >> 4) as usize])
+        if (self.registers[(opcode & 0x0F00 >> 8) as usize] == self.registers[((opcode & 0x00F0) >> 4) as usize])
         {
             return PcState::Skip;
         } else {
@@ -486,10 +488,8 @@ impl Processor {
     // 8XY4 - Adds VY to VX. VF is set to 1 when there's a carry,
     // and to 0 when there isn't. 8000. 0004
     fn op_8xy4(&mut self, opcode: &u16) -> PcState {
-        self.registers[(opcode & 0x0F00 >> 8) as usize] +=
-            self.registers[((opcode & 0x00F0) >> 4) as usize];
-        if (self.registers[((opcode & 0x00F0) >> 4) as usize]
-            > (0xFF - self.registers[((opcode & 0x0F00) >> 8) as usize]))
+        self.registers[(opcode & 0x0F00 >> 8) as usize] += self.registers[((opcode & 0x00F0) >> 4) as usize];
+        if (self.registers[((opcode & 0x00F0) >> 4) as usize] > (0xFF - self.registers[((opcode & 0x0F00) >> 8) as usize]))
         {
             self.registers[0xF] = 1; //carry
         } else {
@@ -500,8 +500,7 @@ impl Processor {
     // 8XY5 - VY is subtracted from VX. VF is set to 0 when
     // there's a borrow, and 1 when there isn't. 8000. 0005
     fn op_8xy5(&mut self, opcode: &u16) -> PcState {
-        if (self.registers[((opcode & 0x00F0) >> 4) as usize]
-            > self.registers[((opcode & 0x0F00) >> 8) as usize])
+        if (self.registers[((opcode & 0x00F0) >> 4) as usize] > self.registers[((opcode & 0x0F00) >> 8) as usize])
         {
             self.registers[0xF] = 0; // there is a borrow
         } else {
@@ -521,8 +520,7 @@ impl Processor {
     // 0x8XY7: Sets VX to VY minus VX. VF is set to 0 when there's
     // a borrow, and 1 when there isn't. 8000. 0007
     fn op_8xy7(&mut self, opcode: &u16) -> PcState {
-        if (self.registers[((opcode & 0x0F00) >> 8) as usize]
-            > self.registers[((opcode & 0x00F0) >> 4) as usize])
+        if (self.registers[((opcode & 0x0F00) >> 8) as usize] > self.registers[((opcode & 0x00F0) >> 4) as usize])
         {
             self.registers[0xF] = 0; // there is a borrow
         } else {
@@ -541,8 +539,7 @@ impl Processor {
     }
     // 9XY0 - Skips the next instruction if VX doesn't equal VY. 9000
     fn op_9xy0(&self, opcode: &u16) -> PcState {
-        if (self.registers[(opcode & 0x0F00 >> 8) as usize]
-            != self.registers[((opcode & 0x00F0) >> 4) as usize])
+        if (self.registers[(opcode & 0x0F00 >> 8) as usize] != self.registers[((opcode & 0x00F0) >> 4) as usize])
         {
             return PcState::Skip;
         } else {
