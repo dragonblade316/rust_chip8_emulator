@@ -346,6 +346,7 @@ impl Processor {
             0x6000 => self.op_6xnn(&opcode),
             0x7000 => self.op_7xnn(&opcode),
             0x8000 => match opcode & 0x000f {
+                0x0000 => self.op_8xy0(&opcode),
                 0x0001 => self.op_8xy1(&opcode),
                 0x0002 => self.op_8xy2(&opcode),
                 0x0003 => self.op_8xy3(&opcode),
@@ -358,13 +359,24 @@ impl Processor {
             }
             0x9000 => self.op_9xy0(&opcode),
             0xa000 => self.op_annn(&opcode),
+            0xb000 => self.op_bnnn(&opcode),
+            0xc000 => self.op_cxnn(&opcode),
             0xd000 => self.op_dxyn(&opcode),
+            0xe000 => match opcode & 0x00FF {
+                0x009e => self.op_ex9e(&opcode),
+                0x00ff => self.op_exa1(&opcode),
+                _ => panic!("unknown instruction under 0xe000 {:X}", opcode)
+            }
             0xf000 => match opcode & 0x00ff {
                 0x0007 => self.op_fx07(&opcode),
                 0x000a => self.op_fx0a(&opcode),
                 0x0015 => self.op_fx15(&opcode),
+                0x0018 => self.op_fx18(&opcode),
+                0x001e => self.op_fx1e(&opcode),
                 0x0029 => self.op_fx29(&opcode),
                 0x0033 => self.op_fx33(&opcode),
+                0x0055 => self.op_fx55(&opcode),
+                0x0065 => self.op_fx65(&opcode),
                 _ => panic!("unknown instruction under 0xf000 {:X}" , opcode)
             }
 
@@ -531,10 +543,12 @@ impl Processor {
     }
     // BNNN - Jumps to the address NNN plus V0. b000
     fn op_bnnn(&mut self, opcode: &u16) -> PcState {
-        PcState::Next
+        PcState::Jump((((opcode) & (0x0FFF)) as u16 + self.registers[0] as u16) as usize)
     }
     // CXNN - Sets VX to a random number, masked by NN. c000
-    fn op_cxnn(&self, opcode: &u16) -> PcState {
+    fn op_cxnn(&mut self, opcode: &u16) -> PcState {
+        //watch out for overflow
+        self.registers[(opcode & 0x0F00 >> 8) as usize] = (opcode & 0x00FF) as u8;
         PcState::Next
     }
     // DXYN: Draws a sprite at coordinate (VX, VY) that has a width of 8
@@ -596,40 +610,60 @@ impl Processor {
 
     // EX9E - Skips the next instruction if the key stored
     // in VX is pressed. e000. 009e
-    fn op_009e(&self, opcode: &u16) -> PcState {
+    fn op_ex9e(&self, opcode: &u16) -> PcState {
+        if self.io.keys[self.registers[(opcode & 0x0F00 >> 8) as usize] as usize] {
+            return PcState::Skip
+        } 
         PcState::Next
     }
     // EXA1 - Skips the next instruction if the key stored
     // in VX isn't pressed.
     fn op_exa1(&self, opcode: &u16) -> PcState {
+        if !self.io.keys[self.registers[(opcode & 0x0F00 >> 8) as usize] as usize] {
+            return PcState::Skip
+        } 
         PcState::Next
     }
     // FX__. f000. here we go agein refer to EX__.
 
     // FX07 - Sets VX to the value of the delay timer. f000. 0007
-    fn op_fx07(&self, opcode: &u16) -> PcState {
+    fn op_fx07(&mut self, opcode: &u16) -> PcState {
+        self.registers[(opcode & 0x0F00 >> 8) as usize] = self.delay_timer;
         PcState::Next
     }
     // FX0A - A key press is awaited, and then stored in VX. f000. 000a
-    fn op_fx0a(&self, opcode: &u16) -> PcState {
+    fn op_fx0a(&mut self, opcode: &u16) -> PcState {
+        let mut key_pressed = false;
+        while !key_pressed{
+            for i in 0..self.io.keys.len() {
+                if self.io.keys[i] == true {
+                    self.registers[(opcode & 0x0F00 >> 8) as usize] = i as u8;
+                    key_pressed = true;
+                }
+            }
+        }
         PcState::Next
     }
     // FX15 - Sets the delay timer to VX. f000. 0015
-    fn op_fx15(&self, opcode: &u16) -> PcState {
+    fn op_fx15(&mut self, opcode: &u16) -> PcState {
+        self.delay_timer = self.registers[((opcode & 0x0F00) >> 8) as usize];
         PcState::Next
     }
     // FX18 - Sets the sound timer to VX. f000. 0018
-    fn op_fx18(&self, opcode: &u16) -> PcState {
+    fn op_fx18(&mut self, opcode: &u16) -> PcState {
+        self.sound_timer = self.registers[((opcode & 0x0F00) >> 8) as usize];
         PcState::Next
     }
     // FX1E - Adds VX to I. f000. 001e
-    fn op_fx1e(&self, opcode: &u16) -> PcState {
+    fn op_fx1e(&mut self, opcode: &u16) -> PcState {
+        self.index = self.registers[(opcode & 0x0F00 >> 8) as usize] as u16 + self.index;
         PcState::Next
     }
     // FX29 - Sets I to the location of the sprite for the
     // character in VX. Characters 0-F (in hexadecimal) are
     // represented by a 4x5 font. f000. 0029
-    fn op_fx29(&self, opcode: &u16) -> PcState {
+    fn op_fx29(&mut self, opcode: &u16) -> PcState {
+        self.index = (self.registers[((opcode & 0x0F00) >> 8) as usize] * 0x5) as u16; 
         PcState::Next
     }
     // FX33 - Stores the Binary-coded bcd representation of VX
@@ -642,8 +676,6 @@ impl Processor {
             self.registers[(self.index + i - 1) as usize] = val % 10;
             val = val / 10;
         }
-
-
         PcState::Next
     }
     // FX55 - Stores  V0 toVX in memory starting at address I. f000. 0055
@@ -655,7 +687,11 @@ impl Processor {
         PcState::Next
     }
     // FX65 - I do not know what this does refer to https://github.com/JamesGriffin/CHIP-8-Emulator/blob/master/src/chip8.cpp line 460 for implmentation details. f000. 0065
-    fn op_fx65(&self, opcode: &u16) -> PcState {
-        PcState::Skip
+    fn op_fx65(&mut self, opcode: &u16) -> PcState {
+        for i in 0..(opcode & 0x0F00 >> 8) {
+            self.registers[(i) as usize] = self.memory[(self.index + i) as usize] ;
+        }
+        self.index += ((opcode & 0x0F00) >> 8) + 1;
+        PcState::Next
     }
 }
